@@ -40,9 +40,9 @@ export class App {
   ];
 
   challanTypes = [
-    'Returnable',
-    'Non-Returnable',
-    'Packing Material'
+    'RETURNABLE',
+    'NON-RETURNABLE',
+    'PACKING MATERIAL'
   ];
 
   companyAddresses = [
@@ -522,7 +522,7 @@ export class App {
 
   resetForm(): void {
     this.challanForm.reset({
-      companyName: 'Flashkart India Private Limited',
+      Consigner: 'Flashkart India Private Limited',
       companyAddress: '',
       companyPhone: '',
       companyEmail: '',
