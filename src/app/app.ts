@@ -67,9 +67,9 @@ export class App {
   constructor(private fb: FormBuilder) {
     this.challanForm = this.fb.group({
       // Company Details
-      companyName: ['Flashkart India Private Limited', Validators.required],
+      companyName: ['Flashkart India Private Limited', [Validators.required, Validators.pattern(/^[a-zA-Z\s]*$/)]],
       companyAddress: ['', Validators.required],
-      companyPhone: ['', Validators.required],
+      companyPhone: ['', [Validators.required, Validators.pattern(/^[0-9]*$/)]],
       companyEmail: ['', [Validators.required, Validators.email]],
       companyGstin: ['33AADCF3120C1ZI'],
       
@@ -83,14 +83,14 @@ export class App {
       // Consignee Details
       consigneeName: ['', Validators.required],
       consigneeAddress: ['', Validators.required],
-      consigneePhone: [''],
+      consigneePhone: ['', Validators.pattern(/^[0-9]*$/)],
       consigneeGstin: ['', Validators.required],
       
       // Transport Details
       transportMode: ['Road', Validators.required],
       vehicleNo: ['', Validators.required],
-      driverName: [''],
-      driverPhone: [''],
+      driverName: ['', Validators.pattern(/^[a-zA-Z\s]*$/)],
+      driverPhone: ['', Validators.pattern(/^[0-9]*$/)],
       ewayBillNo: [''],
       
       // Items
@@ -147,6 +147,16 @@ export class App {
     const baseAmount = quantity * rate;
     const gstAmount = (baseAmount * gst) / 100;
     item.patchValue({ amount: baseAmount + gstAmount });
+  }
+
+  onPhoneInput(event: any, controlName: string): void {
+    const value = event.target.value.replace(/[^0-9]/g, '');
+    this.challanForm.get(controlName)?.setValue(value);
+  }
+
+  onNameInput(event: any, controlName: string): void {
+    const value = event.target.value.replace(/[^a-zA-Z\s]/g, '');
+    this.challanForm.get(controlName)?.setValue(value);
   }
 
   get totalAmount(): number {
@@ -513,10 +523,26 @@ export class App {
   resetForm(): void {
     this.challanForm.reset({
       companyName: 'Flashkart India Private Limited',
+      companyAddress: '',
+      companyPhone: '',
+      companyEmail: '',
       companyGstin: '33AADCF3120C1ZI',
+      challanType: '',
       challanNo: this.generateChallanNo(),
       challanDate: this.today,
+      poNumber: '',
+      poDate: '',
+      consigneeName: '',
+      consigneeAddress: '',
+      consigneePhone: '',
+      consigneeGstin: '',
       transportMode: 'Road',
+      vehicleNo: '',
+      driverName: '',
+      driverPhone: '',
+      ewayBillNo: '',
+      preparedBy: '',
+      remarks: '',
       termsConditions: 'Goods once delivered will not be taken back.\nPlease check the goods at the time of delivery.\nSubject to local jurisdiction.'
     });
     this.items.clear();

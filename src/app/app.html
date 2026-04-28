@@ -168,9 +168,9 @@
               <label class="form-label">Company Address <span class="text-red-500">*</span></label>
               <select 
                 formControlName="companyAddress"
-                class="form-input text-sm py-2"
+                class="form-input text-sm font-semibold py-2"
                 [class.border-red-400]="challanForm.get('companyAddress')?.invalid && challanForm.get('companyAddress')?.touched">
-                <option value="">-- Select Address --</option>
+                <option value="" class="font-semibold">-- Select Address --</option>
                 @for (addr of companyAddresses; track addr.label) {
                   <option [value]="addr.value">{{ addr.label }}</option>
                 }
@@ -192,6 +192,7 @@
                   formControlName="companyPhone" 
                   placeholder="+91 XXXXX XXXXX"
                   class="form-input text-sm py-2"
+                  (input)="onPhoneInput($event, 'companyPhone')"
                   [class.border-red-400]="challanForm.get('companyPhone')?.invalid && challanForm.get('companyPhone')?.touched">
                 @if (challanForm.get('companyPhone')?.invalid && challanForm.get('companyPhone')?.touched) {
                   <span class="text-red-500 text-xs mt-1 flex items-center gap-1">
@@ -238,9 +239,9 @@
           <label class="form-label text-indigo-700 text-xs">Type <span class="text-red-500">*</span></label>
           <select 
             formControlName="challanType" 
-            class="form-input bg-white text-sm py-1.5"
+            class="form-input bg-white text-sm font-semibold py-1.5"
             [class.border-red-400]="challanForm.get('challanType')?.invalid && challanForm.get('challanType')?.touched">
-            <option value="" disabled>Select Type</option>
+            <option value="" disabled class="font-semibold">Select Type</option>
             @for (type of challanTypes; track type) {
               <option [value]="type">{{ type }}</option>
             }
@@ -328,7 +329,8 @@
                   type="tel" 
                   formControlName="consigneePhone" 
                   placeholder="+91 XXXXX XXXXX"
-                  class="form-input text-sm py-1.5">
+                  class="form-input text-sm py-1.5"
+                  (input)="onPhoneInput($event, 'consigneePhone')">
               </div>
               <div class="form-group">
                 <label class="form-label text-xs">GSTIN <span class="text-red-500">*</span></label>
@@ -363,9 +365,9 @@
             <div class="grid grid-cols-2 gap-2">
               <div class="form-group">
                 <label class="form-label text-xs">Transport Mode <span class="text-red-500">*</span></label>
-                <select formControlName="transportMode" class="form-input text-sm py-1.5"
+                <select formControlName="transportMode" class="form-input text-sm font-semibold py-1.5"
                   [class.border-red-400]="challanForm.get('transportMode')?.invalid && challanForm.get('transportMode')?.touched">
-                  <option value="">-- Select --</option>
+                  <option value="" class="font-semibold">-- Select --</option>
                   <option value="Road">Road</option>
                   <option value="Rail">Rail</option>
                   <option value="Air">Air</option>
@@ -402,7 +404,8 @@
                   type="text" 
                   formControlName="driverName" 
                   placeholder="Driver name"
-                  class="form-input text-sm py-1.5">
+                  class="form-input text-sm py-1.5"
+                  (input)="onNameInput($event, 'driverName')">
               </div>
               <div class="form-group">
                 <label class="form-label text-xs">Driver Phone</label>
@@ -410,7 +413,8 @@
                   type="tel" 
                   formControlName="driverPhone" 
                   placeholder="+91 XXXXX XXXXX"
-                  class="form-input text-sm py-1.5">
+                  class="form-input text-sm py-1.5"
+                  (input)="onPhoneInput($event, 'driverPhone')">
               </div>
             </div>
             <div class="form-group">
@@ -512,9 +516,9 @@
                     }
                   </td>
                   <td class="px-3 py-2">
-                    <select formControlName="unit" class="w-full px-3 py-2 border border-gray-200 rounded text-sm text-center text-nowrap focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 outline-none transition-all min-h-[40px]"
+                    <select formControlName="unit" class="w-full px-3 py-2 border border-gray-200 rounded text-sm text-center font-semibold text-nowrap focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 outline-none transition-all min-h-[40px]"
                       [class.border-red-400]="item.get('unit')?.invalid && item.get('unit')?.touched">
-                      <option value="">--</option>
+                      <option value="" class="font-semibold">--</option>
                       <option value="Pcs">Pcs</option>
                       <option value="Kg">Kg</option>
                       <option value="Ltr">Ltr</option>
@@ -586,12 +590,12 @@
       <!-- Remarks, Prepared By & Terms -->
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
         <div class="form-group">
-          <label class="form-label text-xs">Prepared By <span class="text-red-500">*</span></label>
+          <label class="form-label text-sm font-bold">Prepared By <span class="text-red-500">*</span></label>
           <select 
             formControlName="preparedBy" 
-            class="form-input text-sm py-1.5"
+            class="form-input text-sm font-semibold py-1.5"
             [class.border-red-400]="challanForm.get('preparedBy')?.invalid && challanForm.get('preparedBy')?.touched">
-            <option value="" disabled>Select preparer</option>
+            <option value="" disabled class="font-semibold">Select preparer</option>
             @for (preparer of preparers; track preparer) {
               <option [value]="preparer">{{ preparer }}</option>
             }
@@ -624,9 +628,9 @@
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4 border-t-2 border-dashed border-gray-200">
         <div class="text-center">
           <div class="h-10 border-b-2 border-gray-300 mb-1 flex items-end justify-center pb-1">
-            <span class="text-gray-700 font-medium text-xs">{{ challanForm.get('preparedBy')?.value || '' }}</span>
+            <span class="text-gray-700 font-bold text-xs">{{ challanForm.get('preparedBy')?.value || '' }}</span>
           </div>
-          <p class="text-xs font-semibold text-gray-600">Prepared By</p>
+          <p class="text-sm font-bold text-gray-600">Prepared By</p>
         </div>
         <div class="text-center">
           <div class="h-10 border-b-2 border-gray-300 mb-1"></div>
