@@ -444,12 +444,23 @@ export class App {
       
       const challanNo = this.challanForm.get('challanNo')?.value || 'DC';
       pdf.save(`${challanNo}.pdf`);
-      this.submitToGoogleSheet();
+
+      const payload = this.buildSubmitPayload();
+      const submitSuccess = await this.postToGoogleSheet(payload);
+
+      if (submitSuccess) {
+        this.submitMessage.set({ type: 'success', text: 'Data submitted and PDF saved successfully!' });
+        this.resetForm();
+      } else {
+        this.submitMessage.set({ type: 'error', text: 'PDF saved, but submitting data to Google Sheet failed.' });
+      }
     } catch (error) {
       console.error('Error generating PDF:', error);
       alert('Error generating PDF: ' + (error as Error).message);
+      this.submitMessage.set({ type: 'error', text: 'Error generating PDF. Please try again.' });
     } finally {
       this.isGeneratingPdf.set(false);
+      setTimeout(() => this.submitMessage.set(null), 5000);
     }
   }
 
@@ -512,6 +523,35 @@ export class App {
     this.items.push(this.createItem());
   }
 
+  private buildSubmitPayload(): any {
+    const formData = this.challanForm.getRawValue();
+    return {
+      ...formData,
+      items: JSON.stringify(formData.items),
+      totalQuantity: this.totalQuantity,
+      totalAmount: this.totalAmount,
+      submittedAt: new Date().toISOString()
+    };
+  }
+
+  private async postToGoogleSheet(payload: any): Promise<boolean> {
+    try {
+      await fetch(this.googleSheetUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+      console.log('Form submitted to Google Sheet:', payload);
+      return true;
+    } catch (error) {
+      console.error('Error submitting to Google Sheet:', error);
+      return false;
+    }
+  }
+
   submitForm(): void {
     const formData = this.challanForm.getRawValue();
     this.formJsonData.set(JSON.stringify(formData, null, 2));
@@ -534,42 +574,21 @@ export class App {
     this.submitMessage.set(null);
 
     try {
-      const formData = this.challanForm.getRawValue();
-      // Flatten items for Google Sheet
-      const payload = {
-        ...formData,
-        items: JSON.stringify(formData.items),
-        totalQuantity: this.totalQuantity,
-        totalAmount: this.totalAmount,
-        submittedAt: new Date().toISOString()
-      };
+      const payload = this.buildSubmitPayload();
+      const success = await this.postToGoogleSheet(payload);
 
-      const response = await fetch(this.googleSheetUrl, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload)
-      });
+      if (success) {
+        this.submitMessage.set({ type: 'success', text: 'Data submitted to Google Sheet successfully!' });
+        this.formJsonData.set(JSON.stringify(payload, null, 2));
 
-      // With no-cors mode, we can't read the response, but if no error thrown, assume success
-      this.submitMessage.set({ type: 'success', text: 'Data submitted to Google Sheet successfully!' });
-      console.log('Form submitted to Google Sheet:', payload);
-
-      // Also show JSON data
-      this.formJsonData.set(JSON.stringify(payload, null, 2));
-      //this.generatePdf();
-
-      // Ask user if they want to submit another DC copy or exit
-      const userChoice = confirm('Do you want to submit another DC copy or exit?\n\nClick "OK" to submit another DC copy\nClick "Cancel" to exit');
-
-      if (userChoice) {
-        // User chose to submit another DC copy - reset the form
-        this.resetForm();
+        const userChoice = confirm('Do you want to submit another DC copy or exit?\n\nClick "OK" to submit another DC copy\nClick "Cancel" to exit');
+        if (userChoice) {
+          this.resetForm();
+        } else {
+          window.close();
+        }
       } else {
-        // User chose to exit - close the app
-        window.close();
+        this.submitMessage.set({ type: 'error', text: 'Failed to submit data. Please try again.' });
       }
 
     } catch (error) {
