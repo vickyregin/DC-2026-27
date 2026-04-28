@@ -142,6 +142,25 @@
   th, td { padding: 0.5rem 0.25rem; }
 }
 
+/* Prevent text wrapping in table inputs */
+table input, table select, table textarea {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+table input:focus, table select:focus, table textarea:focus {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+/* Ensure table cells don't wrap content */
+table td {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
 /* Animation */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(-10px); }

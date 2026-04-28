@@ -313,9 +313,11 @@ export class App {
         
         /* Ensure table cells show content properly */
         #printArea table input, #printArea table select {
-          padding: 6px 8px !important;
-          min-height: 32px !important;
-          font-size: 13px !important;
+          padding: 8px 12px !important;
+          min-height: 44px !important;
+          font-size: 14px !important;
+          white-space: nowrap !important;
+          overflow: visible !important;
         }
       `;
       document.head.appendChild(styleOverride);
@@ -442,6 +444,7 @@ export class App {
       
       const challanNo = this.challanForm.get('challanNo')?.value || 'DC';
       pdf.save(`${challanNo}.pdf`);
+      this.submitToGoogleSheet();
     } catch (error) {
       console.error('Error generating PDF:', error);
       alert('Error generating PDF: ' + (error as Error).message);
@@ -556,10 +559,18 @@ export class App {
 
       // Also show JSON data
       this.formJsonData.set(JSON.stringify(payload, null, 2));
-      this.generatePdf();
+      //this.generatePdf();
 
-      // Clear the form after successful submit
-      this.resetForm();
+      // Ask user if they want to submit another DC copy or exit
+      const userChoice = confirm('Do you want to submit another DC copy or exit?\n\nClick "OK" to submit another DC copy\nClick "Cancel" to exit');
+
+      if (userChoice) {
+        // User chose to submit another DC copy - reset the form
+        this.resetForm();
+      } else {
+        // User chose to exit - close the app
+        window.close();
+      }
 
     } catch (error) {
       console.error('Error submitting to Google Sheet:', error);
