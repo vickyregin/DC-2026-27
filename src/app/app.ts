@@ -16,6 +16,9 @@ export class App {
   @ViewChild('challanForm') challanFormElement!: ElementRef;
   
   private platformId = inject(PLATFORM_ID);
+  private readonly defaultCompanyName = 'Flashkart India Private Limited';
+  private readonly defaultCompanyGstin = '33AADCF3120C1ZI';
+  private readonly defaultTermsConditions = 'Goods once delivered will not be taken back.\nPlease check the goods at the time of delivery.\nSubject to local jurisdiction.';
   challanForm: FormGroup;
   isGeneratingPdf = signal(false);
   showValidationError = signal(false);
@@ -26,30 +29,28 @@ export class App {
   submitMessage = signal<{type: 'success' | 'error', text: string} | null>(null);
   today = new Date().toISOString().split('T')[0];
 
+  // Login state
+  isLoggedIn = signal(false);
+  loginUsername = signal('');
+  loginPassword = signal('');
+  loginError = signal('');
+  loggedInUser = signal('');
+
   // Google Sheet Apps Script URL - Replace with your deployed web app URL
   private googleSheetUrl = 'https://script.google.com/macros/s/AKfycbwAe-5-aaY8u0ZecerDvk8v5VbGWQorP7fI0AxutH6pvnmgcEaraF7XCviVmHtbalvRWQ/exec';
 
-  preparers = [
-    'Arjun',
-    'Iyyapan',
-    'Parthiban',
-    'Sasi',
-    'Venkat',
-    'Nandhini',
-    'Sharmila'
-  ];
+  // Valid username-password pairs
+  private validCredentials: { [key: string]: string } = {
+    'sasi': 'Sasi@2026',
+    'sharmila': 'Accounts@2026'
+  };
 
   challanTypes = [
     'RETURNABLE',
-    'NON-RETURNABLE',
-    'PACKING MATERIAL'
+    'NON-RETURNABLE'
   ];
 
   companyAddresses = [
-    {
-      label: 'Corporate Office - Chennai',
-      value: 'Corporate Office\nNo 23, 6th Street, Adam Nagar, Pammal Nagalkeni,\nChrompet - Chennai - 600044'
-    },
     {
       label: 'Sunguvarchatram - Warehouse',
       value: 'Sunguvarchatram Warehouse\nSF.NO 200/1B, Om Logistics Opp Side Road,\nSirumangadu, Sriperumbudur.\nPin – 602 106'
@@ -67,11 +68,11 @@ export class App {
   constructor(private fb: FormBuilder) {
     this.challanForm = this.fb.group({
       // Company Details
-      companyName: ['Flashkart India Private Limited', [Validators.required, Validators.pattern(/^[a-zA-Z\s]*$/)]],
+      companyName: [this.defaultCompanyName, [Validators.required, Validators.pattern(/^[a-zA-Z\s]*$/)]],
       companyAddress: ['', Validators.required],
       companyPhone: ['', [Validators.required, Validators.pattern(/^[0-9]*$/)]],
       companyEmail: ['', [Validators.required, Validators.email]],
-      companyGstin: ['33AADCF3120C1ZI'],
+      companyGstin: [this.defaultCompanyGstin],
       
       // Challan Info
       challanType: ['', Validators.required],
@@ -89,8 +90,8 @@ export class App {
       // Transport Details
       transportMode: ['Road', Validators.required],
       vehicleNo: ['', Validators.required],
-      driverName: ['', Validators.pattern(/^[a-zA-Z\s]*$/)],
-      driverPhone: ['', Validators.pattern(/^[0-9]*$/)],
+      driverName: ['', [Validators.required, Validators.pattern(/^[a-zA-Z\s]*$/)]],
+      driverPhone: ['', [Validators.required, Validators.pattern(/^[0-9]*$/)]],
       ewayBillNo: [''],
       
       // Items
@@ -99,8 +100,50 @@ export class App {
       // Additional Info
       preparedBy: ['', Validators.required],
       remarks: [''],
-      termsConditions: ['Goods once delivered will not be taken back.\nPlease check the goods at the time of delivery.\nSubject to local jurisdiction.']
+      termsConditions: [this.defaultTermsConditions]
     });
+  }
+
+  // Login method
+  signin(): void {
+    const username = this.loginUsername().trim();
+    const password = this.loginPassword().trim();
+
+    // Validate inputs
+    if (!username || !password) {
+      this.loginError.set('Please enter both username and password');
+      return;
+    }
+
+    // Check if username exists and password matches
+    if (!this.validCredentials[username] || this.validCredentials[username] !== password) {
+      this.loginError.set('Invalid username or password. Please try again.');
+      return;
+    }
+
+    // Login successful
+    this.isLoggedIn.set(true);
+    this.loggedInUser.set(username);
+    this.loginError.set('');
+    this.loginUsername.set('');
+    this.loginPassword.set('');
+
+    // Set preparedBy field to logged-in user
+    this.challanForm.patchValue({
+      companyName: this.defaultCompanyName,
+      companyGstin: this.defaultCompanyGstin,
+      preparedBy: username
+    });
+  }
+
+  // Logout method
+  logout(): void {
+    this.isLoggedIn.set(false);
+    this.loggedInUser.set('');
+    this.loginUsername.set('');
+    this.loginPassword.set('');
+    this.loginError.set('');
+    this.resetForm();
   }
 
   createItem(): FormGroup {
@@ -522,11 +565,11 @@ export class App {
 
   resetForm(): void {
     this.challanForm.reset({
-      Consigner: 'Flashkart India Private Limited',
+      companyName: this.defaultCompanyName,
       companyAddress: '',
       companyPhone: '',
       companyEmail: '',
-      companyGstin: '33AADCF3120C1ZI',
+      companyGstin: this.defaultCompanyGstin,
       challanType: '',
       challanNo: this.generateChallanNo(),
       challanDate: this.today,
@@ -543,7 +586,7 @@ export class App {
       ewayBillNo: '',
       preparedBy: '',
       remarks: '',
-      termsConditions: 'Goods once delivered will not be taken back.\nPlease check the goods at the time of delivery.\nSubject to local jurisdiction.'
+      termsConditions: this.defaultTermsConditions
     });
     this.items.clear();
     this.items.push(this.createItem());
