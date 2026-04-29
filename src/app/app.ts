@@ -106,8 +106,9 @@ export class App {
 
   // Login method
   signin(): void {
-    const username = this.loginUsername().trim();
+    const username = this.loginUsername().trim().toUpperCase();
     const password = this.loginPassword().trim();
+
 
     // Validate inputs
     if (!username || !password) {
