@@ -19,6 +19,7 @@ export class App {
   private readonly defaultCompanyName = 'Flashkart India Private Limited';
   private readonly defaultCompanyGstin = '33AADCF3120C1ZI';
   private readonly defaultTermsConditions = 'Goods once delivered will not be taken back.\nPlease check the goods at the time of delivery.\nSubject to local jurisdiction.';
+  private readonly nonReturnableTermsConditions = 'Goods returns are accepted within the specified policy period, provided the items are not damaged.';
   challanForm: FormGroup;
   isGeneratingPdf = signal(false);
   showValidationError = signal(false);
@@ -101,6 +102,14 @@ export class App {
       preparedBy: ['', Validators.required],
       remarks: [''],
       termsConditions: [this.defaultTermsConditions]
+    });
+
+    this.challanForm.get('challanType')?.valueChanges.subscribe((type) => {
+      this.challanForm.patchValue({
+        termsConditions: type === 'NON-RETURNABLE'
+          ? this.nonReturnableTermsConditions
+          : this.defaultTermsConditions
+      }, { emitEvent: false });
     });
   }
 
