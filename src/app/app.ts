@@ -41,8 +41,8 @@ export class App {
 
   // Valid username-password pairs
   private validCredentials: { [key: string]: string } = {
-    'sasi': 'Sasi@2026',
-    'sharmila': 'Accounts@2026'
+    'SASI': 'Sasi@2026',
+    'SHARMILA': 'Accounts@2026'
   };
 
   challanTypes = [
