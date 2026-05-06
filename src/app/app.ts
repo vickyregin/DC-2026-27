@@ -20,6 +20,7 @@ export class App {
   private readonly defaultCompanyGstin = '33AADCF3120C1ZI';
   private readonly defaultTermsConditions = 'Goods once delivered will not be taken back.\nPlease check the goods at the time of delivery.\nSubject to local jurisdiction.';
   private readonly nonReturnableTermsConditions = 'Goods returns are accepted within the specified policy period, provided the items are not damaged.';
+  readonly manualCompanyAddressValue = '__OTHER__';
   challanForm: FormGroup;
   isGeneratingPdf = signal(false);
   showValidationError = signal(false);
@@ -28,6 +29,7 @@ export class App {
   formJsonData = signal<string>('');
   isSubmitting = signal(false);
   submitMessage = signal<{type: 'success' | 'error', text: string} | null>(null);
+  isManualCompanyAddress = signal(false);
   today = new Date().toISOString().split('T')[0];
 
   // Login state
@@ -62,7 +64,7 @@ export class App {
     },
     {
       label: 'Kadigai - Warehouse',
-      value: 'Kadigai Warehouse\nPlot No 137, Sri Anjaneyar Street, Arungovil Nagar,\nPanruti Village, Sriperumpudur Taluk, Kanchipuram'
+      value: 'Kadigai Warehouse\nS.No 456/1A AND 456/1C,\nPANRUTTY KANDIGAI VILLAGE,SRIPERUMPUDUR,KANCHEEPURAM.TAMIL NADU,602105'
     }
   ];
 
@@ -70,6 +72,7 @@ export class App {
     this.challanForm = this.fb.group({
       // Company Details
       companyName: [this.defaultCompanyName, [Validators.required, Validators.pattern(/^[a-zA-Z\s]*$/)]],
+      companyAddressSelection: ['', Validators.required],
       companyAddress: ['', Validators.required],
       companyPhone: ['', [Validators.required, Validators.pattern(/^[0-9]*$/)]],
       companyEmail: ['', [Validators.required, Validators.email]],
@@ -109,6 +112,13 @@ export class App {
         termsConditions: type === 'NON-RETURNABLE'
           ? this.nonReturnableTermsConditions
           : this.defaultTermsConditions
+      }, { emitEvent: false });
+    });
+
+    this.challanForm.get('companyAddressSelection')?.valueChanges.subscribe((selectedAddress) => {
+      this.isManualCompanyAddress.set(selectedAddress === this.manualCompanyAddressValue);
+      this.challanForm.patchValue({
+        companyAddress: selectedAddress === this.manualCompanyAddressValue ? '' : selectedAddress
       }, { emitEvent: false });
     });
   }
@@ -576,6 +586,7 @@ export class App {
   resetForm(): void {
     this.challanForm.reset({
       companyName: this.defaultCompanyName,
+      companyAddressSelection: '',
       companyAddress: '',
       companyPhone: '',
       companyEmail: '',
@@ -603,7 +614,7 @@ export class App {
   }
 
   private buildSubmitPayload(): any {
-    const formData = this.challanForm.getRawValue();
+    const { companyAddressSelection, ...formData } = this.challanForm.getRawValue();
     return {
       ...formData,
       items: JSON.stringify(formData.items),
