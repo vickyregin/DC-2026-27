@@ -384,12 +384,33 @@
           </h3>
           <div class="space-y-2">
             <div class="form-group">
+              <label class="form-label text-xs">Select Consignee <span class="text-red-500">*</span></label>
+              <select
+                formControlName="consigneeSelection"
+                class="form-input text-sm font-semibold py-1.5"
+                [class.border-red-400]="challanForm.get('consigneeSelection')?.invalid && challanForm.get('consigneeSelection')?.touched">
+                <option value="" class="font-semibold">-- Select Consignee --</option>
+                @for (addr of consigneeAddresses; track addr.name) {
+                  <option [value]="addr.name">{{ addr.label }}</option>
+                }
+                <option [value]="manualConsigneeAddressValue">Add manual address</option>
+              </select>
+              @if (challanForm.get('consigneeSelection')?.invalid && challanForm.get('consigneeSelection')?.touched) {
+                <span class="text-red-500 text-xs mt-0.5 flex items-center gap-1">
+                  <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
+                  Please select consignee or add manual address
+                </span>
+              }
+            </div>
+            <div class="form-group">
               <label class="form-label text-xs">Name <span class="text-red-500">*</span></label>
               <input 
                 type="text" 
                 formControlName="consigneeName" 
                 placeholder="Consignee / Buyer name"
+                [readonly]="!isManualConsigneeAddress()"
                 class="form-input text-sm py-1.5"
+                [class.bg-gray-50]="!isManualConsigneeAddress()"
                 [class.border-red-400]="challanForm.get('consigneeName')?.invalid && challanForm.get('consigneeName')?.touched">
               @if (challanForm.get('consigneeName')?.invalid && challanForm.get('consigneeName')?.touched) {
                 <span class="text-red-500 text-xs mt-0.5 flex items-center gap-1">
@@ -402,9 +423,11 @@
               <label class="form-label text-xs">Address <span class="text-red-500">*</span></label>
               <textarea 
                 formControlName="consigneeAddress" 
-                rows="1"
+                rows="3"
                 placeholder="Delivery address"
+                [readonly]="!isManualConsigneeAddress()"
                 class="form-input resize-none text-sm py-1.5"
+                [class.bg-gray-50]="!isManualConsigneeAddress()"
                 [class.border-red-400]="challanForm.get('consigneeAddress')?.invalid && challanForm.get('consigneeAddress')?.touched"></textarea>
               @if (challanForm.get('consigneeAddress')?.invalid && challanForm.get('consigneeAddress')?.touched) {
                 <span class="text-red-500 text-xs mt-0.5 flex items-center gap-1">
@@ -429,7 +452,9 @@
                   type="text" 
                   formControlName="consigneeGstin" 
                   placeholder="Enter GSTIN"
+                  [readonly]="!isManualConsigneeAddress()"
                   class="form-input uppercase text-sm py-1.5"
+                  [class.bg-gray-50]="!isManualConsigneeAddress()"
                   [class.border-red-400]="challanForm.get('consigneeGstin')?.invalid && challanForm.get('consigneeGstin')?.touched">
                 @if (challanForm.get('consigneeGstin')?.invalid && challanForm.get('consigneeGstin')?.touched) {
                   <span class="text-red-500 text-xs mt-0.5 flex items-center gap-1">
@@ -562,7 +587,7 @@
               <tr>
                 <th class="px-3 py-2 text-left text-sm font-semibold uppercase tracking-wider w-10">S.No</th>
                 <th class="px-3 py-2 text-left text-sm font-semibold uppercase tracking-wider w-56">Description <span class="text-red-300">*</span></th>
-                <th class="px-3 py-2 text-left text-sm font-semibold uppercase tracking-wider w-20">HSN <span class="text-red-300">*</span></th>
+                <th class="px-3 py-2 text-left text-sm font-semibold uppercase tracking-wider w-20">HSN</th>
                 <th class="px-3 py-2 text-center text-sm font-semibold uppercase tracking-wider w-16">Qty <span class="text-red-300">*</span></th>
                 <th class="px-3 py-2 text-center text-sm font-semibold uppercase tracking-wider w-16">Unit <span class="text-red-300">*</span></th>
                 <th class="px-3 py-2 text-right text-sm font-semibold uppercase tracking-wider w-20">Rate <span class="text-red-300">*</span></th>
@@ -596,14 +621,7 @@
                       type="text" 
                       formControlName="hsnCode" 
                       placeholder="HSN"
-                      class="w-full px-3 py-2 border border-gray-200 rounded text-sm text-center focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 outline-none transition-all min-h-[40px]"
-                      [class.border-red-400]="item.get('hsnCode')?.invalid && item.get('hsnCode')?.touched">
-                    @if (item.get('hsnCode')?.invalid && item.get('hsnCode')?.touched) {
-                      <span class="text-red-500 text-xs flex items-center gap-0.5 mt-0.5">
-                        <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
-                        Required
-                      </span>
-                    }
+                      class="w-full px-3 py-2 border border-gray-200 rounded text-sm text-center focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 outline-none transition-all min-h-[40px]">
                   </td>
                   <td class="px-3 py-2">
                     <input 

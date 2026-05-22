@@ -21,6 +21,7 @@ export class App {
   private readonly defaultTermsConditions = 'Goods once delivered will not be taken back.\nPlease check the goods at the time of delivery.\nSubject to local jurisdiction.';
   private readonly nonReturnableTermsConditions = 'Goods returns are accepted within the specified policy period, provided the items are not damaged.';
   readonly manualCompanyAddressValue = '__OTHER__';
+  readonly manualConsigneeAddressValue = '__MANUAL_CONSIGNEE__';
   challanForm: FormGroup;
   isGeneratingPdf = signal(false);
   showValidationError = signal(false);
@@ -30,6 +31,7 @@ export class App {
   isSubmitting = signal(false);
   submitMessage = signal<{type: 'success' | 'error', text: string} | null>(null);
   isManualCompanyAddress = signal(false);
+  isManualConsigneeAddress = signal(false);
   today = new Date().toISOString().split('T')[0];
 
   // Login state
@@ -68,6 +70,27 @@ export class App {
     }
   ];
 
+  consigneeAddresses = [
+    {
+      label: 'FAIVELEY TRANSPORT RAIL TECHNOLOGIES INDIA PVT LTD',
+      name: 'FAIVELEY TRANSPORT RAIL TECHNOLOGIES INDIA PVT LTD',
+      address: 'Harita,\nHosur-635109',
+      gstin: '33AAGCS8525B1ZL'
+    },
+    {
+      label: 'Dellner India PVT.Ltd.',
+      name: 'Dellner India PVT.Ltd.',
+      address: 'Survey No.59/1,Padur Road,\nMevalurkuppam, Sriperumbudur Taluk,\nKanchipuram Dist.\nPIN-602105. Tamil Nadu, India',
+      gstin: '33AADCD0894P1ZA'
+    },
+    {
+      label: 'KALYANI CENTER FOR PRECISION TECHNOLOGY LIMITED',
+      name: 'KALYANI CENTER FOR PRECISION TECHNOLOGY LIMITED',
+      address: 'Fact.Add:Plot no.A1/5,Indapur Indl.\nMIDC,Village-Loni Devkar,Taluka-Ind\nDistrict Pune 413133\nMaharashtra',
+      gstin: '27AAHCK9414E1ZH'
+    }
+  ];
+
   constructor(private fb: FormBuilder) {
     this.challanForm = this.fb.group({
       // Company Details
@@ -86,6 +109,7 @@ export class App {
       poDate: [''],
       
       // Consignee Details
+      consigneeSelection: ['', Validators.required],
       consigneeName: ['', Validators.required],
       consigneeAddress: ['', Validators.required],
       consigneePhone: ['', Validators.pattern(/^[0-9]*$/)],
@@ -119,6 +143,19 @@ export class App {
       this.isManualCompanyAddress.set(selectedAddress === this.manualCompanyAddressValue);
       this.challanForm.patchValue({
         companyAddress: selectedAddress === this.manualCompanyAddressValue ? '' : selectedAddress
+      }, { emitEvent: false });
+    });
+
+    this.challanForm.get('consigneeSelection')?.valueChanges.subscribe((selectedConsignee) => {
+      const isManual = selectedConsignee === this.manualConsigneeAddressValue;
+      this.isManualConsigneeAddress.set(isManual);
+
+      const consignee = this.consigneeAddresses.find((addr) => addr.name === selectedConsignee);
+      this.challanForm.patchValue({
+        consigneeName: consignee?.name ?? '',
+        consigneeAddress: consignee?.address ?? '',
+        consigneePhone: '',
+        consigneeGstin: consignee?.gstin ?? ''
       }, { emitEvent: false });
     });
   }
@@ -170,7 +207,7 @@ export class App {
     return this.fb.group({
       slNo: [1],
       description: ['', Validators.required],
-      hsnCode: ['', Validators.required],
+      hsnCode: [''],
       quantity: [1, [Validators.required, Validators.min(1)]],
       unit: ['Pcs', Validators.required],
       rate: [0, [Validators.required, Validators.min(0)]],
@@ -596,6 +633,7 @@ export class App {
       challanDate: this.today,
       poNumber: '',
       poDate: '',
+      consigneeSelection: '',
       consigneeName: '',
       consigneeAddress: '',
       consigneePhone: '',
@@ -614,7 +652,7 @@ export class App {
   }
 
   private buildSubmitPayload(): any {
-    const { companyAddressSelection, ...formData } = this.challanForm.getRawValue();
+    const { companyAddressSelection, consigneeSelection, ...formData } = this.challanForm.getRawValue();
     return {
       ...formData,
       items: JSON.stringify(formData.items),
