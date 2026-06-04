@@ -1,9 +1,38 @@
-import { Component, signal, ElementRef, ViewChild, inject, PLATFORM_ID } from '@angular/core';
+import { Component, signal, ElementRef, ViewChild, inject, PLATFORM_ID, OnInit } from '@angular/core';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, FormArray, Validators } from '@angular/forms';
 
 declare var html2canvas: any;
 declare var jspdf: any;
+declare var XLSX: any;
+
+// Interface for challan history records
+interface ChallanRecord {
+  challanNo: string;
+  challanDate: string;
+  challanType: string;
+  category: string;
+  consigneeName: string;
+  totalQuantity: number;
+  totalAmount: number;
+  preparedBy: string;
+  submittedAt: string;
+  companyAddress: string;
+  vehicleNo: string;
+  items: any[];
+}
+
+// Interface for dashboard analytics
+interface DashboardAnalytics {
+  totalChallans: number;
+  totalAmount: number;
+  totalQuantity: number;
+  returnableCount: number;
+  nonReturnableCount: number;
+  consigneeBreakdown: { name: string; count: number; amount: number }[];
+  monthlyBreakdown: { month: string; count: number; amount: number }[];
+  preparedByBreakdown: { name: string; count: number }[];
+}
 
 @Component({
   selector: 'app-root',
@@ -12,7 +41,7 @@ declare var jspdf: any;
   templateUrl: './app.html',
   styleUrl: './app.css'
 })
-export class App {
+export class App implements OnInit {
   @ViewChild('challanForm') challanFormElement!: ElementRef;
   
   private platformId = inject(PLATFORM_ID);
@@ -20,6 +49,8 @@ export class App {
   private readonly defaultCompanyGstin = '33AADCF3120C1ZI';
   private readonly defaultTermsConditions = 'Goods once delivered will not be taken back.\nPlease check the goods at the time of delivery.\nSubject to local jurisdiction.';
   private readonly nonReturnableTermsConditions = 'Goods returns are accepted within the specified policy period, provided the items are not damaged.';
+  private readonly STORAGE_KEY = 'dc_challan_history';
+  private readonly SESSION_KEY = 'dc_user_session';
   readonly manualCompanyAddressValue = '__OTHER__';
   readonly manualConsigneeAddressValue = '__MANUAL_CONSIGNEE__';
   challanForm: FormGroup;
@@ -41,9 +72,22 @@ export class App {
   loginError = signal('');
   loggedInUser = signal('');
 
-  // Google Sheet Apps Script URL - Replace with your deployed web app URL
-  private googleSheetUrl = 'https://script.google.com/macros/s/AKfycbwAe-5-aaY8u0ZecerDvk8v5VbGWQorP7fI0AxutH6pvnmgcEaraF7XCviVmHtbalvRWQ/exec';
+  // Dashboard state
+  showDashboard = signal(false);
+  challanHistory = signal<ChallanRecord[]>([]);
+  dashboardAnalytics = signal<DashboardAnalytics>({
+    totalChallans: 0,
+    totalAmount: 0,
+    totalQuantity: 0,
+    returnableCount: 0,
+    nonReturnableCount: 0,
+    consigneeBreakdown: [],
+    monthlyBreakdown: [],
+    preparedByBreakdown: []
+  });
 
+  // Google Sheet Apps Script URL - Replace with your deployed web app URL
+  private googleSheetUrl = 'https://script.google.com/macros/s/AKfycbw_15VF4I_HDb2vO__Fa7sqlwbAGYVbo-_n3TBK3owaQau_pXAoRET3Z9L5uVe_b9bfFg/exec';
   // Valid username-password pairs
   private validCredentials: { [key: string]: string } = {
     'SASI': 'Sasi@2026',
@@ -53,6 +97,11 @@ export class App {
   challanTypes = [
     'RETURNABLE',
     'NON-RETURNABLE'
+  ];
+
+  categories = [
+    'CAPEX',
+    'OPEX'
   ];
 
   companyAddresses = [
@@ -103,6 +152,7 @@ export class App {
       
       // Challan Info
       challanType: ['', Validators.required],
+      category: ['', Validators.required],
       challanNo: [this.generateChallanNo(), Validators.required],
       challanDate: [this.today, Validators.required],
       poNumber: [''],
@@ -160,6 +210,242 @@ export class App {
     });
   }
 
+  ngOnInit(): void {
+    if (isPlatformBrowser(this.platformId)) {
+      this.restoreSession();
+      this.loadChallanHistory();
+    }
+  }
+
+  // Session persistence methods
+  private restoreSession(): void {
+    try {
+      const sessionData = localStorage.getItem(this.SESSION_KEY);
+      if (sessionData) {
+        const session = JSON.parse(sessionData);
+        if (session.username && session.timestamp) {
+          // Check if session is still valid (24 hours)
+          const now = Date.now();
+          const sessionAge = now - session.timestamp;
+          const maxAge = 24 * 60 * 60 * 1000; // 24 hours
+          
+          if (sessionAge < maxAge) {
+            this.isLoggedIn.set(true);
+            this.loggedInUser.set(session.username);
+            this.challanForm.patchValue({
+              companyName: this.defaultCompanyName,
+              companyGstin: this.defaultCompanyGstin,
+              preparedBy: session.username
+            });
+          } else {
+            // Session expired, clear it
+            localStorage.removeItem(this.SESSION_KEY);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error restoring session:', error);
+    }
+  }
+
+  private saveSession(username: string): void {
+    try {
+      const session = {
+        username,
+        timestamp: Date.now()
+      };
+      localStorage.setItem(this.SESSION_KEY, JSON.stringify(session));
+    } catch (error) {
+      console.error('Error saving session:', error);
+    }
+  }
+
+  private clearSession(): void {
+    try {
+      localStorage.removeItem(this.SESSION_KEY);
+    } catch (error) {
+      console.error('Error clearing session:', error);
+    }
+  }
+
+  // Challan history methods
+  private loadChallanHistory(): void {
+    try {
+      const historyData = localStorage.getItem(this.STORAGE_KEY);
+      if (historyData) {
+        const history = JSON.parse(historyData);
+        this.challanHistory.set(history);
+        this.calculateAnalytics();
+      }
+    } catch (error) {
+      console.error('Error loading challan history:', error);
+    }
+  }
+
+  private saveChallanToHistory(challan: ChallanRecord): void {
+    try {
+      const history = [...this.challanHistory()];
+      history.unshift(challan); // Add to beginning
+      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(history));
+      this.challanHistory.set(history);
+      this.calculateAnalytics();
+    } catch (error) {
+      console.error('Error saving challan to history:', error);
+    }
+  }
+
+  private calculateAnalytics(): void {
+    const history = this.challanHistory();
+    
+    if (history.length === 0) {
+      this.dashboardAnalytics.set({
+        totalChallans: 0,
+        totalAmount: 0,
+        totalQuantity: 0,
+        returnableCount: 0,
+        nonReturnableCount: 0,
+        consigneeBreakdown: [],
+        monthlyBreakdown: [],
+        preparedByBreakdown: []
+      });
+      return;
+    }
+
+    const totalAmount = history.reduce((sum, c) => sum + (c.totalAmount || 0), 0);
+    const totalQuantity = history.reduce((sum, c) => sum + (c.totalQuantity || 0), 0);
+    const returnableCount = history.filter(c => c.challanType === 'RETURNABLE').length;
+    const nonReturnableCount = history.filter(c => c.challanType === 'NON-RETURNABLE').length;
+
+    // Consignee breakdown
+    const consigneeMap = new Map<string, { count: number; amount: number }>();
+    history.forEach(c => {
+      const name = c.consigneeName || 'Unknown';
+      const existing = consigneeMap.get(name) || { count: 0, amount: 0 };
+      existing.count++;
+      existing.amount += c.totalAmount || 0;
+      consigneeMap.set(name, existing);
+    });
+    const consigneeBreakdown = Array.from(consigneeMap.entries())
+      .map(([name, data]) => ({ name, ...data }))
+      .sort((a, b) => b.count - a.count);
+
+    // Monthly breakdown
+    const monthlyMap = new Map<string, { count: number; amount: number }>();
+    history.forEach(c => {
+      const date = new Date(c.challanDate);
+      const month = date.toLocaleDateString('en-US', { year: 'numeric', month: 'short' });
+      const existing = monthlyMap.get(month) || { count: 0, amount: 0 };
+      existing.count++;
+      existing.amount += c.totalAmount || 0;
+      monthlyMap.set(month, existing);
+    });
+    const monthlyBreakdown = Array.from(monthlyMap.entries())
+      .map(([month, data]) => ({ month, ...data }))
+      .sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime());
+
+    // Prepared by breakdown
+    const preparedByMap = new Map<string, number>();
+    history.forEach(c => {
+      const name = c.preparedBy || 'Unknown';
+      preparedByMap.set(name, (preparedByMap.get(name) || 0) + 1);
+    });
+    const preparedByBreakdown = Array.from(preparedByMap.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+
+    this.dashboardAnalytics.set({
+      totalChallans: history.length,
+      totalAmount,
+      totalQuantity,
+      returnableCount,
+      nonReturnableCount,
+      consigneeBreakdown,
+      monthlyBreakdown,
+      preparedByBreakdown
+    });
+  }
+
+  // Dashboard toggle
+  toggleDashboard(): void {
+    this.showDashboard.set(!this.showDashboard());
+    if (this.showDashboard()) {
+      this.calculateAnalytics();
+    }
+  }
+
+  // Export to Excel
+  async exportToExcel(): Promise<void> {
+    const history = this.challanHistory();
+    
+    if (history.length === 0) {
+      alert('No challan data to export');
+      return;
+    }
+
+    // Prepare data for Excel
+    const excelData = history.map((c, index) => ({
+      'S.No': index + 1,
+      'Challan No': c.challanNo,
+      'Date': c.challanDate,
+      'Type': c.challanType,
+      'Category': c.category,
+      'Consignee': c.consigneeName,
+      'Company Address': c.companyAddress,
+      'Vehicle No': c.vehicleNo,
+      'Total Qty': c.totalQuantity,
+      'Total Amount': c.totalAmount,
+      'Prepared By': c.preparedBy,
+      'Submitted At': c.submittedAt
+    }));
+
+    // Create workbook and worksheet
+    const ws = XLSX.utils.json_to_sheet(excelData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Challans');
+
+    // Also add items detail sheet
+    const itemsData: any[] = [];
+    history.forEach(c => {
+      if (c.items && Array.isArray(c.items)) {
+        c.items.forEach((item: any) => {
+          itemsData.push({
+            'Challan No': c.challanNo,
+            'Date': c.challanDate,
+            'Category': c.category,
+            'S.No': item.slNo,
+            'Description': item.description,
+            'HSN Code': item.hsnCode,
+            'Quantity': item.quantity,
+            'Unit': item.unit,
+            'Rate': item.rate,
+            'GST %': item.gst,
+            'Amount': item.amount
+          });
+        });
+      }
+    });
+    
+    if (itemsData.length > 0) {
+      const wsItems = XLSX.utils.json_to_sheet(itemsData);
+      XLSX.utils.book_append_sheet(wb, wsItems, 'Item Details');
+    }
+
+    // Download file
+    const fileName = `Challans_Export_${new Date().toISOString().split('T')[0]}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+  }
+
+  // Clear all history
+  clearHistory(): void {
+    if (confirm('Are you sure you want to clear all challan history? This action cannot be undone.')) {
+      localStorage.removeItem(this.STORAGE_KEY);
+      this.challanHistory.set([]);
+      this.calculateAnalytics();
+      this.submitMessage.set({ type: 'success', text: 'Challan history cleared successfully!' });
+      setTimeout(() => this.submitMessage.set(null), 3000);
+    }
+  }
+
   // Login method
   signin(): void {
     const username = this.loginUsername().trim().toUpperCase();
@@ -185,12 +471,18 @@ export class App {
     this.loginUsername.set('');
     this.loginPassword.set('');
 
+    // Save session to localStorage
+    this.saveSession(username);
+
     // Set preparedBy field to logged-in user
     this.challanForm.patchValue({
       companyName: this.defaultCompanyName,
       companyGstin: this.defaultCompanyGstin,
       preparedBy: username
     });
+
+    // Load history after login
+    this.loadChallanHistory();
   }
 
   // Logout method
@@ -200,6 +492,8 @@ export class App {
     this.loginUsername.set('');
     this.loginPassword.set('');
     this.loginError.set('');
+    this.showDashboard.set(false);
+    this.clearSession();
     this.resetForm();
   }
 
@@ -558,11 +852,30 @@ export class App {
       const payload = this.buildSubmitPayload();
       const submitSuccess = await this.postToGoogleSheet(payload);
 
+      // Save to local history regardless of Google Sheet submission
+      const formData = this.challanForm.getRawValue();
+      const challanRecord: ChallanRecord = {
+        challanNo: formData.challanNo,
+        challanDate: formData.challanDate,
+        challanType: formData.challanType,
+        category: formData.category,
+        consigneeName: formData.consigneeName,
+        totalQuantity: this.totalQuantity,
+        totalAmount: this.totalAmount,
+        preparedBy: formData.preparedBy,
+        submittedAt: new Date().toISOString(),
+        companyAddress: formData.companyAddress,
+        vehicleNo: formData.vehicleNo,
+        items: formData.items
+      };
+      this.saveChallanToHistory(challanRecord);
+
       if (submitSuccess) {
         this.submitMessage.set({ type: 'success', text: 'Data submitted and PDF saved successfully!' });
         this.resetForm();
       } else {
-        this.submitMessage.set({ type: 'error', text: 'PDF saved, but submitting data to Google Sheet failed.' });
+        this.submitMessage.set({ type: 'error', text: 'PDF saved and stored locally, but Google Sheet submission failed.' });
+        this.resetForm();
       }
     } catch (error) {
       console.error('Error generating PDF:', error);
@@ -629,6 +942,7 @@ export class App {
       companyEmail: '',
       companyGstin: this.defaultCompanyGstin,
       challanType: '',
+      category: '',
       challanNo: this.generateChallanNo(),
       challanDate: this.today,
       poNumber: '',
