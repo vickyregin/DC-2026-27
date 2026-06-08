@@ -31,14 +31,158 @@ const CATEGORY_SUMMARY_SHEET = 'Category_Summary';
 const MONTHLY_ANALYTICS_SHEET = 'Monthly_Analytics';
 
 /**
- * Handles GET requests - used for testing the deployment
+ * Handles GET requests - used for fetching data and testing the deployment
+ * Supports both regular JSON and JSONP (for CORS bypass)
  */
 function doGet(e) {
-  return ContentService.createTextOutput(JSON.stringify({
+  // Check if action parameter is provided (handle case when e is undefined for direct testing)
+  const params = e && e.parameter ? e.parameter : {};
+  const action = params.action || null;
+  const callback = params.callback || null; // JSONP callback
+  
+  if (action === 'getData') {
+    // Fetch all challan data
+    try {
+      const ss = SpreadsheetApp.getActiveSpreadsheet();
+      const masterSheet = ss.getSheetByName(MASTER_SHEET);
+      
+      if (!masterSheet) {
+        const response = {
+          status: 'success',
+          challans: [],
+          message: 'No data found',
+          timestamp: new Date().toISOString()
+        };
+        return createResponse(response, callback);
+      }
+      
+      const data = masterSheet.getDataRange().getValues();
+      const headers = data[0];
+      const challans = [];
+      
+      // Skip header row, process data rows
+      for (let i = 1; i < data.length; i++) {
+        const row = data[i];
+        // Skip empty rows
+        if (!row[1]) continue; // Skip if no challan number
+        
+        const challan = {
+          submittedAt: formatDateValue(row[0]),
+          challanNo: row[1] || '',
+          challanDate: formatDateValue(row[2]),
+          challanType: row[3] || '',
+          category: row[4] || '',
+          companyName: row[5] || '',
+          companyAddress: row[6] || '',
+          companyPhone: row[7] || '',
+          companyEmail: row[8] || '',
+          companyGstin: row[9] || '',
+          consigneeName: row[10] || '',
+          consigneeAddress: row[11] || '',
+          consigneePhone: row[12] || '',
+          consigneeGstin: row[13] || '',
+          transportMode: row[14] || '',
+          vehicleNo: row[15] || '',
+          driverName: row[16] || '',
+          driverPhone: row[17] || '',
+          ewayBillNo: row[18] || '',
+          poNumber: row[19] || '',
+          poDate: formatDateValue(row[20]),
+          totalQuantity: row[21] || 0,
+          totalAmount: row[22] || 0,
+          preparedBy: row[23] || '',
+          remarks: row[24] || '',
+          termsConditions: row[25] || '',
+          items: []
+        };
+        
+        // Fetch items for this challan from Items_Detail sheet
+        const itemsSheet = ss.getSheetByName(ITEMS_SHEET);
+        if (itemsSheet && itemsSheet.getLastRow() > 1) {
+          const itemsData = itemsSheet.getDataRange().getValues();
+          for (let j = 1; j < itemsData.length; j++) {
+            if (itemsData[j][0] === challan.challanNo) {
+              challan.items.push({
+                slNo: itemsData[j][4] || '',
+                description: itemsData[j][5] || '',
+                hsnCode: itemsData[j][6] || '',
+                quantity: itemsData[j][7] || 0,
+                unit: itemsData[j][8] || '',
+                rate: itemsData[j][9] || 0,
+                gst: itemsData[j][10] || 0,
+                amount: itemsData[j][11] || 0
+              });
+            }
+          }
+        }
+        
+        challans.push(challan);
+      }
+      
+      // Sort by submitted date (newest first)
+      challans.sort((a, b) => {
+        const dateA = new Date(a.submittedAt || a.challanDate || 0).getTime();
+        const dateB = new Date(b.submittedAt || b.challanDate || 0).getTime();
+        return dateB - dateA;
+      });
+      
+      const response = {
+        status: 'success',
+        challans: challans,
+        total: challans.length,
+        timestamp: new Date().toISOString()
+      };
+      
+      return createResponse(response, callback);
+      
+    } catch (error) {
+      const response = {
+        status: 'error',
+        message: error.message,
+        timestamp: new Date().toISOString()
+      };
+      return createResponse(response, callback);
+    }
+  }
+  
+  // Default response for health check
+  const response = {
     status: 'success',
     message: 'Delivery Challan API is running',
     timestamp: new Date().toISOString()
-  })).setMimeType(ContentService.MimeType.JSON);
+  };
+  return createResponse(response, callback);
+}
+
+/**
+ * Helper function to format date values from spreadsheet
+ */
+function formatDateValue(value) {
+  if (!value) return '';
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  if (typeof value === 'string') {
+    return value;
+  }
+  return String(value);
+}
+
+/**
+ * Helper function to create response (supports both JSON and JSONP)
+ */
+function createResponse(data, callback) {
+  const jsonString = JSON.stringify(data);
+  
+  if (callback) {
+    // JSONP response
+    return ContentService.createTextOutput(callback + '(' + jsonString + ')')
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+  
+  // Regular JSON response
+  return ContentService.createTextOutput(jsonString)
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
 /**
