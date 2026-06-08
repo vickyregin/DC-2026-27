@@ -30,8 +30,17 @@ interface DashboardAnalytics {
   returnableCount: number;
   nonReturnableCount: number;
   consigneeBreakdown: { name: string; count: number; amount: number }[];
-  monthlyBreakdown: { month: string; count: number; amount: number }[];
+  monthlyBreakdown: { month: string; count: number; amount: number; quantity: number }[];
   preparedByBreakdown: { name: string; count: number }[];
+  monthOnMonthComparison: { 
+    currentMonth: { month: string; count: number; amount: number; quantity: number };
+    previousMonth: { month: string; count: number; amount: number; quantity: number };
+    countChange: number;
+    amountChange: number;
+    quantityChange: number;
+  } | null;
+  categoryBreakdown: { category: string; count: number; amount: number; quantity: number }[];
+  topItems: { description: string; totalQuantity: number; category: string; challanCount: number }[];
 }
 
 @Component({
@@ -75,19 +84,28 @@ export class App implements OnInit {
   // Dashboard state
   showDashboard = signal(false);
   challanHistory = signal<ChallanRecord[]>([]);
+  isLoadingData = signal(false);
+  
+  // Pagination state for Recent Challans
+  currentPage = signal(1);
+  pageSize = signal(10);
+  pageSizeOptions = [5, 10, 20, 50];
   dashboardAnalytics = signal<DashboardAnalytics>({
     totalChallans: 0,
     totalAmount: 0,
     totalQuantity: 0,
     returnableCount: 0,
     nonReturnableCount: 0,
-    consigneeBreakdown: [],
-    monthlyBreakdown: [],
-    preparedByBreakdown: []
+    consigneeBreakdown: [] as { name: string; count: number; amount: number }[],
+    monthlyBreakdown: [] as { month: string; count: number; amount: number; quantity: number }[],
+    preparedByBreakdown: [] as { name: string; count: number }[],
+    monthOnMonthComparison: null,
+    categoryBreakdown: [] as { category: string; count: number; amount: number; quantity: number }[],
+    topItems: [] as { description: string; totalQuantity: number; category: string; challanCount: number }[]
   });
 
   // Google Sheet Apps Script URL - Replace with your deployed web app URL
-  private googleSheetUrl = 'https://script.google.com/macros/s/AKfycbw_15VF4I_HDb2vO__Fa7sqlwbAGYVbo-_n3TBK3owaQau_pXAoRET3Z9L5uVe_b9bfFg/exec';
+  private googleSheetUrl = 'https://script.google.com/macros/s/AKfycby5HXzcccteqFyb5O3-l4WHVOtlRdm1YDF35a7P-I2Cx1t_jeXoXei_h-ZY5qL5oPAw6A/exec';
   // Valid username-password pairs
   private validCredentials: { [key: string]: string } = {
     'SASI': 'Sasi@2026',
@@ -270,6 +288,7 @@ export class App implements OnInit {
 
   // Challan history methods
   private loadChallanHistory(): void {
+    // First load from localStorage for immediate display
     try {
       const historyData = localStorage.getItem(this.STORAGE_KEY);
       if (historyData) {
@@ -278,8 +297,194 @@ export class App implements OnInit {
         this.calculateAnalytics();
       }
     } catch (error) {
-      console.error('Error loading challan history:', error);
+      console.error('Error loading challan history from localStorage:', error);
     }
+    
+    // Then fetch from Google Sheets to get the complete data
+    this.fetchFromGoogleSheet();
+  }
+
+  // Fetch data from Google Sheets using JSONP (bypasses CORS)
+  private async fetchFromGoogleSheet(): Promise<void> {
+    this.isLoadingData.set(true);
+    console.log('Starting fetch from Google Sheet...', this.googleSheetUrl);
+    
+    try {
+      // First, try regular fetch (works with Google Apps Script when deployed properly)
+      try {
+        const fetchUrl = `${this.googleSheetUrl}?action=getData`;
+        console.log('Trying fetch:', fetchUrl);
+        
+        const response = await fetch(fetchUrl, {
+          method: 'GET',
+          redirect: 'follow'
+        });
+        
+        console.log('Fetch response status:', response.status, response.ok);
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log('Fetch response data:', data);
+          
+          if (data.status === 'success' && data.challans && Array.isArray(data.challans)) {
+            console.log('Fetch successful! Records:', data.challans.length);
+            this.processServerData(data.challans);
+            return;
+          }
+        }
+      } catch (fetchError) {
+        console.warn('Regular fetch failed, trying JSONP...', fetchError);
+      }
+
+      // Fallback: Use JSONP to bypass CORS restrictions
+      const callbackName = 'googleSheetCallback_' + Date.now();
+      console.log('Trying JSONP with callback:', callbackName);
+      
+      // Create a promise that resolves when the callback is called
+      const dataPromise = new Promise<any>((resolve, reject) => {
+        const timeoutId = setTimeout(() => {
+          console.error('JSONP request timed out');
+          reject(new Error('Request timed out'));
+          cleanup();
+        }, 15000); // 15 second timeout
+        
+        // Define the callback function on window
+        (window as any)[callbackName] = (data: any) => {
+          console.log('JSONP callback received data');
+          clearTimeout(timeoutId);
+          resolve(data);
+          cleanup();
+        };
+        
+        const cleanup = () => {
+          delete (window as any)[callbackName];
+          const existingScript = document.getElementById('jsonp-script');
+          if (existingScript) {
+            existingScript.remove();
+          }
+        };
+        
+        // Create script element for JSONP request
+        const script = document.createElement('script');
+        script.id = 'jsonp-script';
+        const jsonpUrl = `${this.googleSheetUrl}?action=getData&callback=${callbackName}`;
+        console.log('JSONP URL:', jsonpUrl);
+        script.src = jsonpUrl;
+        script.onerror = (err) => {
+          console.error('JSONP script error:', err);
+          clearTimeout(timeoutId);
+          reject(new Error('Script load error'));
+          cleanup();
+        };
+        
+        document.body.appendChild(script);
+      });
+      
+      const data = await dataPromise;
+      console.log('JSONP response received:', data);
+      
+      if (data.status === 'success' && data.challans && Array.isArray(data.challans)) {
+        console.log('JSONP successful! Records:', data.challans.length);
+        this.processServerData(data.challans);
+      } else {
+        console.warn('Invalid data format from server:', data);
+      }
+      
+    } catch (error) {
+      console.error('Error fetching from Google Sheet:', error);
+      console.log('Using local storage data only. Total records:', this.challanHistory().length);
+      // Continue with local data if fetch fails
+    } finally {
+      this.isLoadingData.set(false);
+    }
+  }
+
+  // Process server data and merge with local
+  private processServerData(serverChallans: any[]): void {
+    console.log('Processing server data:', serverChallans.length, 'records');
+    
+    // Transform the data to match our ChallanRecord interface
+    const challans: ChallanRecord[] = serverChallans.map((item: any) => ({
+      challanNo: item.challanNo || '',
+      challanDate: this.formatDate(item.challanDate),
+      challanType: item.challanType || '',
+      category: item.category || '',
+      consigneeName: item.consigneeName || '',
+      totalQuantity: parseFloat(item.totalQuantity) || 0,
+      totalAmount: parseFloat(item.totalAmount) || 0,
+      preparedBy: item.preparedBy || '',
+      submittedAt: item.submittedAt || '',
+      companyAddress: item.companyAddress || '',
+      vehicleNo: item.vehicleNo || '',
+      items: this.parseItems(item.items)
+    }));
+    
+    // Merge with local data, avoiding duplicates
+    const localHistory = this.challanHistory();
+    const allChallans = this.mergeChallans(challans, localHistory);
+    
+    // Update localStorage with merged data
+    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(allChallans));
+    this.challanHistory.set(allChallans);
+    this.calculateAnalytics();
+    console.log('Data merged successfully. Total records:', allChallans.length);
+  }
+
+  // Format date string to consistent format
+  private formatDate(dateValue: any): string {
+    if (!dateValue) return '';
+    if (typeof dateValue === 'string') {
+      // Check if it's already in YYYY-MM-DD format
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
+        return dateValue;
+      }
+      // Try parsing the date
+      const date = new Date(dateValue);
+      if (!isNaN(date.getTime())) {
+        return date.toISOString().split('T')[0];
+      }
+      return dateValue;
+    }
+    if (dateValue instanceof Date) {
+      return dateValue.toISOString().split('T')[0];
+    }
+    return String(dateValue);
+  }
+
+  // Parse items from various formats
+  private parseItems(items: any): any[] {
+    if (!items) return [];
+    if (Array.isArray(items)) return items;
+    if (typeof items === 'string') {
+      try {
+        return JSON.parse(items);
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  }
+
+  // Merge challans from Google Sheets with local data, avoiding duplicates
+  private mergeChallans(serverChallans: ChallanRecord[], localChallans: ChallanRecord[]): ChallanRecord[] {
+    const challanMap = new Map<string, ChallanRecord>();
+    
+    // Add server challans first (they are the source of truth)
+    serverChallans.forEach(challan => {
+      challanMap.set(challan.challanNo, challan);
+    });
+    
+    // Add local challans that don't exist in server (newly created)
+    localChallans.forEach(challan => {
+      if (!challanMap.has(challan.challanNo)) {
+        challanMap.set(challan.challanNo, challan);
+      }
+    });
+    
+    // Convert to array and sort by date (newest first)
+    return Array.from(challanMap.values()).sort((a, b) => {
+      return new Date(b.submittedAt || b.challanDate).getTime() - new Date(a.submittedAt || a.challanDate).getTime();
+    });
   }
 
   private saveChallanToHistory(challan: ChallanRecord): void {
@@ -304,9 +509,12 @@ export class App implements OnInit {
         totalQuantity: 0,
         returnableCount: 0,
         nonReturnableCount: 0,
-        consigneeBreakdown: [],
-        monthlyBreakdown: [],
-        preparedByBreakdown: []
+        consigneeBreakdown: [] as { name: string; count: number; amount: number }[],
+        monthlyBreakdown: [] as { month: string; count: number; amount: number; quantity: number }[],
+        preparedByBreakdown: [] as { name: string; count: number }[],
+        monthOnMonthComparison: null,
+        categoryBreakdown: [] as { category: string; count: number; amount: number; quantity: number }[],
+        topItems: [] as { description: string; totalQuantity: number; category: string; challanCount: number }[]
       });
       return;
     }
@@ -329,19 +537,83 @@ export class App implements OnInit {
       .map(([name, data]) => ({ name, ...data }))
       .sort((a, b) => b.count - a.count);
 
-    // Monthly breakdown
-    const monthlyMap = new Map<string, { count: number; amount: number }>();
+    // Monthly breakdown with quantity
+    const monthlyMap = new Map<string, { count: number; amount: number; quantity: number }>();
     history.forEach(c => {
       const date = new Date(c.challanDate);
       const month = date.toLocaleDateString('en-US', { year: 'numeric', month: 'short' });
-      const existing = monthlyMap.get(month) || { count: 0, amount: 0 };
+      const existing = monthlyMap.get(month) || { count: 0, amount: 0, quantity: 0 };
       existing.count++;
       existing.amount += c.totalAmount || 0;
+      existing.quantity += c.totalQuantity || 0;
       monthlyMap.set(month, existing);
     });
     const monthlyBreakdown = Array.from(monthlyMap.entries())
       .map(([month, data]) => ({ month, ...data }))
       .sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime());
+
+    // Month-on-month comparison
+    let monthOnMonthComparison = null;
+    if (monthlyBreakdown.length >= 1) {
+      const currentMonth = monthlyBreakdown[0];
+      const previousMonth = monthlyBreakdown.length > 1 ? monthlyBreakdown[1] : { month: 'N/A', count: 0, amount: 0, quantity: 0 };
+      
+      const countChange = previousMonth.count > 0 
+        ? ((currentMonth.count - previousMonth.count) / previousMonth.count) * 100 
+        : currentMonth.count > 0 ? 100 : 0;
+      const amountChange = previousMonth.amount > 0 
+        ? ((currentMonth.amount - previousMonth.amount) / previousMonth.amount) * 100 
+        : currentMonth.amount > 0 ? 100 : 0;
+      const quantityChange = previousMonth.quantity > 0 
+        ? ((currentMonth.quantity - previousMonth.quantity) / previousMonth.quantity) * 100 
+        : currentMonth.quantity > 0 ? 100 : 0;
+      
+      monthOnMonthComparison = {
+        currentMonth,
+        previousMonth,
+        countChange,
+        amountChange,
+        quantityChange
+      };
+    }
+
+    // Category breakdown (CAPEX/OPEX)
+    const categoryMap = new Map<string, { count: number; amount: number; quantity: number }>();
+    history.forEach(c => {
+      const category = c.category || 'Unknown';
+      const existing = categoryMap.get(category) || { count: 0, amount: 0, quantity: 0 };
+      existing.count++;
+      existing.amount += c.totalAmount || 0;
+      existing.quantity += c.totalQuantity || 0;
+      categoryMap.set(category, existing);
+    });
+    const categoryBreakdown = Array.from(categoryMap.entries())
+      .map(([category, data]) => ({ category, ...data }))
+      .sort((a, b) => b.quantity - a.quantity);
+
+    // Top items with quantity to be dispatched
+    const itemsMap = new Map<string, { description: string; totalQuantity: number; category: string; challanCount: number }>();
+    history.forEach(c => {
+      if (c.items && Array.isArray(c.items)) {
+        c.items.forEach((item: any) => {
+          const desc = (item.description || '').toUpperCase().trim();
+          if (desc) {
+            const existing = itemsMap.get(desc) || { 
+              description: item.description || '', 
+              totalQuantity: 0, 
+              category: c.category || '',
+              challanCount: 0 
+            };
+            existing.totalQuantity += parseFloat(item.quantity) || 0;
+            existing.challanCount++;
+            itemsMap.set(desc, existing);
+          }
+        });
+      }
+    });
+    const topItems = Array.from(itemsMap.values())
+      .sort((a, b) => b.totalQuantity - a.totalQuantity)
+      .slice(0, 10); // Top 10 items
 
     // Prepared by breakdown
     const preparedByMap = new Map<string, number>();
@@ -361,7 +633,10 @@ export class App implements OnInit {
       nonReturnableCount,
       consigneeBreakdown,
       monthlyBreakdown,
-      preparedByBreakdown
+      preparedByBreakdown,
+      monthOnMonthComparison,
+      categoryBreakdown,
+      topItems
     });
   }
 
@@ -369,8 +644,71 @@ export class App implements OnInit {
   toggleDashboard(): void {
     this.showDashboard.set(!this.showDashboard());
     if (this.showDashboard()) {
-      this.calculateAnalytics();
+      // Refresh data when opening dashboard
+      this.fetchFromGoogleSheet();
     }
+  }
+
+  // Refresh dashboard data
+  refreshDashboard(): void {
+    this.fetchFromGoogleSheet();
+  }
+
+  // Pagination methods
+  get totalPages(): number {
+    return Math.ceil(this.challanHistory().length / this.pageSize());
+  }
+
+  get paginatedChallans(): ChallanRecord[] {
+    const start = (this.currentPage() - 1) * this.pageSize();
+    const end = start + this.pageSize();
+    return this.challanHistory().slice(start, end);
+  }
+
+  get pageNumbers(): number[] {
+    const total = this.totalPages;
+    const current = this.currentPage();
+    const pages: number[] = [];
+    
+    // Always show first page
+    pages.push(1);
+    
+    // Show pages around current page
+    for (let i = Math.max(2, current - 1); i <= Math.min(total - 1, current + 1); i++) {
+      if (!pages.includes(i)) {
+        pages.push(i);
+      }
+    }
+    
+    // Always show last page if more than 1 page
+    if (total > 1 && !pages.includes(total)) {
+      pages.push(total);
+    }
+    
+    return pages.sort((a, b) => a - b);
+  }
+
+  goToPage(page: number): void {
+    if (page >= 1 && page <= this.totalPages) {
+      this.currentPage.set(page);
+    }
+  }
+
+  nextPage(): void {
+    if (this.currentPage() < this.totalPages) {
+      this.currentPage.set(this.currentPage() + 1);
+    }
+  }
+
+  previousPage(): void {
+    if (this.currentPage() > 1) {
+      this.currentPage.set(this.currentPage() - 1);
+    }
+  }
+
+  changePageSize(size: number): void {
+    this.pageSize.set(size);
+    this.currentPage.set(1); // Reset to first page
   }
 
   // Export to Excel
