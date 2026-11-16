@@ -160,7 +160,32 @@
       <!-- Dashboard Header -->
       <div class="mb-6 flex flex-wrap gap-3 justify-between items-center">
         <h2 class="text-xl font-bold text-slate-800">Analytics Dashboard</h2>
-        <div class="flex gap-2">
+        <div class="flex flex-wrap gap-2 items-center">
+          <div class="flex items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-sm">
+            <label class="text-xs font-semibold uppercase tracking-wide text-slate-500">Export</label>
+            <select [(ngModel)]="exportFilterType" name="exportFilterType" class="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-700 focus:border-indigo-500 focus:outline-none">
+              <option value="all">All Records</option>
+              <option value="month">Month</option>
+              <option value="custom">Date Range</option>
+            </select>
+
+            @if (exportFilterType() === 'month') {
+              <select [(ngModel)]="selectedExportMonth" name="selectedExportMonth" class="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-700 focus:border-indigo-500 focus:outline-none">
+                @for (month of exportMonthOptions; track month.value) {
+                  <option [value]="month.value">{{ month.label }}</option>
+                }
+              </select>
+            }
+
+            @if (exportFilterType() === 'custom') {
+              <div class="flex items-center gap-2">
+                <input type="date" [(ngModel)]="exportStartDate" name="exportStartDate" class="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-700 focus:border-indigo-500 focus:outline-none" placeholder="From date">
+                <span class="text-slate-400">to</span>
+                <input type="date" [(ngModel)]="exportEndDate" name="exportEndDate" class="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-700 focus:border-indigo-500 focus:outline-none" placeholder="To date">
+              </div>
+            }
+          </div>
+
           <button 
             type="button"
             (click)="refreshDashboard()"

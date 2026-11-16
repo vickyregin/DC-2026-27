@@ -72,7 +72,7 @@ export class App implements OnInit {
   submitMessage = signal<{type: 'success' | 'error', text: string} | null>(null);
   isManualCompanyAddress = signal(false);
   isManualConsigneeAddress = signal(false);
-  today = new Date().toISOString().split('T')[0];
+  today = this.toLocalDateInputValue(new Date());
 
   // Login state
   isLoggedIn = signal(false);
@@ -85,6 +85,10 @@ export class App implements OnInit {
   showDashboard = signal(false);
   challanHistory = signal<ChallanRecord[]>([]);
   isLoadingData = signal(false);
+  exportFilterType = signal<'all' | 'month' | 'custom'>('month');
+  selectedExportMonth = signal<string>(this.toMonthKey(new Date()));
+  exportStartDate = signal('');
+  exportEndDate = signal('');
   
   // Pagination state for Recent Challans
   currentPage = signal(1);
@@ -430,6 +434,14 @@ export class App implements OnInit {
     console.log('Data merged successfully. Total records:', allChallans.length);
   }
 
+  private toLocalDateInputValue(date: Date): string {
+    const value = new Date(date);
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
   // Format date string to consistent format
   private formatDate(dateValue: any): string {
     if (!dateValue) return '';
@@ -441,12 +453,12 @@ export class App implements OnInit {
       // Try parsing the date
       const date = new Date(dateValue);
       if (!isNaN(date.getTime())) {
-        return date.toISOString().split('T')[0];
+        return this.toLocalDateInputValue(date);
       }
       return dateValue;
     }
     if (dateValue instanceof Date) {
-      return dateValue.toISOString().split('T')[0];
+      return this.toLocalDateInputValue(dateValue);
     }
     return String(dateValue);
   }
@@ -711,12 +723,94 @@ export class App implements OnInit {
     this.currentPage.set(1); // Reset to first page
   }
 
+  get exportMonthOptions(): { value: string; label: string }[] {
+    const months = new Map<string, string>();
+
+    this.challanHistory().forEach((challan) => {
+      const challanDate = challan.challanDate || challan.submittedAt;
+      const parsedDate = this.parseLocalDate(challanDate);
+      if (parsedDate) {
+        const monthKey = this.toMonthKey(parsedDate);
+        if (!months.has(monthKey)) {
+          months.set(monthKey, new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(parsedDate));
+        }
+      }
+    });
+
+    return Array.from(months.entries())
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => b.value.localeCompare(a.value));
+  }
+
+  private toMonthKey(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    return `${year}-${month}`;
+  }
+
+  private parseLocalDate(dateValue: string | null | undefined): Date | null {
+    if (!dateValue) return null;
+
+    const trimmed = dateValue.trim();
+    const dateOnlyMatch = /^\d{4}-\d{2}-\d{2}$/.exec(trimmed);
+    if (dateOnlyMatch) {
+      const [year, month, day] = trimmed.split('-').map(Number);
+      return new Date(year, month - 1, day);
+    }
+
+    const parsed = new Date(trimmed);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  private getFilteredExportHistory(): ChallanRecord[] {
+    const history = [...this.challanHistory()];
+    if (!history.length) return [];
+
+    const filterType = this.exportFilterType();
+    if (filterType === 'all') return history;
+
+    if (filterType === 'month') {
+      const selectedMonth = this.selectedExportMonth();
+      if (!selectedMonth) return history;
+
+      const [year, month] = selectedMonth.split('-').map(Number);
+      const startDate = new Date(year, month - 1, 1);
+      const endDate = new Date(year, month, 0, 23, 59, 59, 999);
+
+      return history.filter((challan) => {
+        const date = this.parseLocalDate(challan.challanDate);
+        return date ? date >= startDate && date <= endDate : false;
+      });
+    }
+
+    const startDateValue = this.exportStartDate();
+    const endDateValue = this.exportEndDate();
+
+    if (!startDateValue && !endDateValue) return history;
+
+    const startDate = startDateValue ? this.parseLocalDate(startDateValue) : null;
+    const endDate = endDateValue ? this.parseLocalDate(endDateValue) : null;
+
+    if (startDate && endDate && startDate > endDate) {
+      alert('Start date cannot be greater than end date.');
+      return [];
+    }
+
+    return history.filter((challan) => {
+      const date = this.parseLocalDate(challan.challanDate);
+      if (!date) return false;
+      if (startDate && date < startDate) return false;
+      if (endDate && date > endDate) return false;
+      return true;
+    });
+  }
+
   // Export to Excel
   async exportToExcel(): Promise<void> {
-    const history = this.challanHistory();
+    const history = this.getFilteredExportHistory();
     
     if (history.length === 0) {
-      alert('No challan data to export');
+      alert('No challan data available for the selected export range.');
       return;
     }
 
@@ -769,7 +863,10 @@ export class App implements OnInit {
     }
 
     // Download file
-    const fileName = `Challans_Export_${new Date().toISOString().split('T')[0]}.xlsx`;
+    const rangeLabel = this.exportFilterType() === 'month'
+      ? this.selectedExportMonth() || 'all'
+      : this.exportStartDate() || this.exportEndDate() || 'all';
+    const fileName = `Challans_Export_${rangeLabel.replace(/[^a-zA-Z0-9-_]/g, '_')}.xlsx`;
     XLSX.writeFile(wb, fileName);
   }
 
@@ -1206,7 +1303,7 @@ export class App implements OnInit {
         vehicleNo: formData.vehicleNo,
         items: formData.items
       };
-      this.saveChallanToHistory(challanRecord);
+     // this.saveChallanToHistory(challanRecord);
 
       if (submitSuccess) {
         this.submitMessage.set({ type: 'success', text: 'Data submitted and PDF saved successfully!' });

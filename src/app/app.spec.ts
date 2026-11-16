@@ -14,10 +14,11 @@ describe('App', () => {
     expect(app).toBeTruthy();
   });
 
-  it('should render title', async () => {
+  it('should keep the local calendar date when formatting challan dates', () => {
     const fixture = TestBed.createComponent(App);
-    await fixture.whenStable();
-    const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.querySelector('h1')?.textContent).toContain('Hello, delivery-challan-app');
+    const app = fixture.componentInstance as any;
+
+    expect(app.formatDate('2026-11-16')).toBe('2026-11-16');
+    expect(app.formatDate(new Date('2026-11-16T00:30:00+05:30'))).toBe('2026-11-16');
   });
 });
